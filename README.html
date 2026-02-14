@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>时光穿梭机 - 全球时差专家</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --ios-bg: #F2F2F7;
+            --ios-card: rgba(255, 255, 255, 0.85);
+            --ios-blue: #007AFF;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--ios-bg);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            /* 防止 H5 页面整体橡皮筋回弹 */
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #app-scroller {
+            height: 100%;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .glass {
+            background: var(--ios-card);
+            backdrop-filter: blur(25px) saturate(200%);
+            -webkit-backdrop-filter: blur(25px) saturate(200%);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+
+        /* 进度条样式修复 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            height: 32px; /* 增加点击区域 */
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.08);
+            border-radius: 4px;
+            border: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 28px;
+            width: 28px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -10px; /* (TrackHeight/2) - (ThumbHeight/2) = 4 - 14 = -10 */
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            border: 0.5px solid rgba(0,0,0,0.05);
+        }
+
+        /* 修复搜索列表高度 */
+        #search-modal {
+            height: 100vh;
+            display: none;
+        }
+        #search-modal.active {
+            display: flex;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --ios-bg: #000000;
+                --ios-card: rgba(28, 28, 30, 0.85);
+            }
+            input[type=range]::-webkit-slider-runnable-track {
+                background: rgba(255, 255, 255, 0.15);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 滚动容器 -->
+    <div id="app-scroller">
+        <!-- 背景装饰 -->
+        <div class="fixed inset-0 pointer-events-none -z-10">
+            <div class="absolute top-[-5%] right-[-5%] w-[70%] h-[40%] bg-blue-500/10 blur-[100px] rounded-full"></div>
+            <div class="absolute bottom-[5%] left-[-10%] w-[60%] h-[50%] bg-purple-500/10 blur-[100px] rounded-full"></div>
+        </div>
+
+        <div class="max-w-lg mx-auto px-6 pt-16 pb-64">
+            <!-- Header -->
+            <header class="flex justify-between items-end mb-10">
+                <div>
+                    <h1 class="text-4xl font-black tracking-tight dark:text-white">时光穿梭</h1>
+                    <p id="local-date-banner" class="text-gray-500 font-semibold text-sm mt-1 uppercase tracking-widest"></p>
+                </div>
+                <button onclick="openSearch()" class="w-12 h-12 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center shadow-xl active:scale-90 transition-all">
+                    <i data-lucide="plus" class="text-blue-500"></i>
+                </button>
+            </header>
+
+            <!-- 模式切换 -->
+            <div class="flex bg-gray-200/40 dark:bg-zinc-800/40 p-1.5 rounded-[1.5rem] mb-8 glass">
+                <button id="mode-live" onclick="toggleAppMode('live')" class="flex-1 py-2.5 text-sm font-bold rounded-2xl transition-all">实时</button>
+                <button id="mode-travel" onclick="toggleAppMode('travel')" class="flex-1 py-2.5 text-sm font-bold rounded-2xl transition-all">穿梭</button>
+            </div>
+
+            <!-- 城市卡片 -->
+            <div id="city-container" class="space-y-5"></div>
+
+            <div id="empty-view" class="hidden flex flex-col items-center justify-center py-32 opacity-30">
+                <i data-lucide="compass" class="w-16 h-16 mb-4 text-gray-400"></i>
+                <p class="font-bold dark:text-gray-400">点击右上角添加城市</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部控制台 -->
+    <div id="travel-console" class="fixed bottom-0 left-0 right-0 glass border-t border-white/10 px-8 pt-8 pb-14 translate-y-full transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] z-40 rounded-t-[3rem] shadow-[0_-15px_40px_rgba(0,0,0,0.15)]">
+        <div class="max-w-lg mx-auto">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-2.5 h-2.5 bg-blue-500 rounded-full shadow-[0_0_10px_#007AFF]"></div>
+                    <span class="text-sm font-black dark:text-zinc-300 tracking-wider">拨动时间线</span>
+                </div>
+                <div id="active-travel-time" class="bg-blue-500 text-white px-5 py-1.5 rounded-2xl font-mono font-black text-lg">
+                    12:00
+                </div>
+            </div>
+            <div class="relative px-1">
+                <input type="range" id="master-slider" min="0" max="1439" value="720">
+            </div>
+            <div class="flex justify-between mt-4 text-[11px] text-gray-400 font-black uppercase tracking-[0.2em]">
+                <span>凌晨</span>
+                <span>清晨</span>
+                <span>正午</span>
+                <span>傍晚</span>
+                <span>深夜</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 搜索层 -->
+    <div id="search-modal" class="fixed inset-0 z-50 bg-white dark:bg-black flex-col animate-in fade-in slide-in-from-bottom-10 duration-400">
+        <div class="px-6 pt-16 pb-6 flex items-center gap-4 border-b border-gray-50 dark:border-zinc-800">
+            <div class="flex-1 bg-gray-100 dark:bg-zinc-900 rounded-2xl flex items-center px-5 py-3.5 ring-blue-500/20 transition-all focus-within:ring-4">
+                <i data-lucide="search" class="w-5 h-5 text-gray-400 mr-3"></i>
+                <input id="city-search-input" type="text" placeholder="搜索全球 60+ 城市..." class="bg-transparent border-none outline-none w-full dark:text-white font-medium">
+            </div>
+            <button onclick="closeSearch()" class="text-blue-500 font-bold px-2 active:opacity-50 transition-opacity">完成</button>
+        </div>
+        <!-- 这里是修复滚动的关键点：flex-1 + overflow-y-auto -->
+        <div id="search-list" class="flex-1 overflow-y-auto px-6 pt-4 pb-20 space-y-2">
+            <!-- 结果 -->
+        </div>
+    </div>
+
+    <script>
+        // 城市数据 (保持并稍微优化)
+        const WORLD_CITIES = [
+            { name: '北京', zone: 'Asia/Shanghai', country: '中国' },
+            { name: '伦敦', zone: 'Europe/London', country: '英国' },
+            { name: '纽约', zone: 'America/New_York', country: '美国' },
+            { name: '东京', zone: 'Asia/Tokyo', country: '日本' },
+            { name: '巴黎', zone: 'Europe/Paris', country: '法国' },
+            { name: '悉尼', zone: 'Australia/Sydney', country: '澳大利亚' },
+            { name: '首尔', zone: 'Asia/Seoul', country: '韩国' },
+            { name: '新加坡', zone: 'Asia/Singapore', country: '新加坡' },
+            { name: '迪拜', zone: 'Asia/Dubai', country: '阿联酋' },
+            { name: '新德里', zone: 'Asia/Kolkata', country: '印度' },
+            { name: '莫斯科', zone: 'Europe/Moscow', country: '俄罗斯' },
+            { name: '多伦多', zone: 'America/Toronto', country: '加拿大' },
+            { name: '圣保罗', zone: 'America/Sao_Paulo', country: '巴西' },
+            { name: '开罗', zone: 'Africa/Cairo', country: '埃及' },
+            { name: '柏林', zone: 'Europe/Berlin', country: '德国' },
+            { name: '三藩市', zone: 'America/Los_Angeles', country: '美国' },
+            { name: '孟买', zone: 'Asia/Kolkata', country: '印度' },
+            { name: '香港', zone: 'Asia/Hong_Kong', country: '中国' },
+            { name: '曼谷', zone: 'Asia/Bangkok', country: '泰国' },
+            { name: '洛杉矶', zone: 'America/Los_Angeles', country: '美国' },
+            { name: '温哥华', zone: 'America/Vancouver', country: '加拿大' },
+            { name: '芝加哥', zone: 'America/Chicago', country: '美国' },
+            { name: '台北', zone: 'Asia/Taipei', country: '中国' },
+            { name: '马德里', zone: 'Europe/Madrid', country: '西班牙' },
+            { name: '罗马', zone: 'Europe/Rome', country: '意大利' },
+            { name: '雅加达', zone: 'Asia/Jakarta', country: '印尼' },
+            { name: '伊斯坦布尔', zone: 'Europe/Istanbul', country: '土耳其' },
+            { name: '加德满都', zone: 'Asia/Kathmandu', country: '尼泊尔' },
+            { name: '约翰内斯堡', zone: 'Africa/Johannesburg', country: '南非' },
+            { name: '奥克兰', zone: 'Pacific/Auckland', country: '新西兰' },
+            { name: '火奴鲁鲁', zone: 'Pacific/Honolulu', country: '美国' }
+        ].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+
+        let appState = {
+            mode: 'live',
+            selectedCities: JSON.parse(localStorage.getItem('saved_world_clocks')) || [WORLD_CITIES[0], WORLD_CITIES[1], WORLD_CITIES[2]],
+            sliderValue: 720,
+            tick: new Date()
+        };
+
+        function startup() {
+            lucide.createIcons();
+            
+            setInterval(() => {
+                if (appState.mode === 'live') {
+                    appState.tick = new Date();
+                    updateTimeDisplay();
+                }
+            }, 1000);
+
+        
